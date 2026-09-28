@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sticky Calendar</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗒️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<style>
+:root{
+  --desk:#D8DFE6; --paper:#FBFCFD; --out:#F1F4F7; --ink:#1E2833; --muted:#5E6B78; --muted2:#9AA6B2;
+  --line:#E2E7EC; --accent:#2C4F86; --accent-ink:#FFFFFF; --danger:#A33A2E;
+  --hand:'Kalam', 'Comic Sans MS', cursive; --sans:'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--desk:#161C23;--paper:#212A34;--out:#1B232C;--ink:#E7ECF1;--muted:#A3AFBB;--muted2:#66737F;--line:#2F3A46;--accent:#7FA6E8;--accent-ink:#10192A;--danger:#F08A7E}
+}
+:root[data-theme="dark"]{--desk:#161C23;--paper:#212A34;--out:#1B232C;--ink:#E7ECF1;--muted:#A3AFBB;--muted2:#66737F;--line:#2F3A46;--accent:#7FA6E8;--accent-ink:#10192A;--danger:#F08A7E}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.45}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.top{max-width:1400px;margin:0 auto;padding:28px 24px 14px}
+.title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+h1{margin:0;font-size:clamp(2.5rem,7vw,4.75rem);font-weight:800;letter-spacing:-.035em;line-height:.92}
+h1 .y{font-weight:400}
+.month-nav{display:flex;gap:6px}
+.btn{font-weight:600;background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:.55em 1em;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted2)}
+.btn.icon{width:2.6em;padding:.55em 0;font-size:1.05rem}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--danger)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.meta-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;margin-top:14px;font-size:.88rem;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:2px 0;cursor:pointer;color:var(--muted)}
+.chip:hover{color:var(--ink)}
+.sw{width:15px;height:15px;border-radius:3px;background:var(--c);box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.saved{margin-left:auto}
+
+.layout{max-width:1400px;margin:0 auto;padding:0 24px 40px;display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start}
+.board{background:var(--paper);border-radius:16px;overflow:hidden;box-shadow:0 1px 0 rgba(30,40,51,.05),0 16px 34px -22px rgba(30,40,51,.45)}
+.weekdays,.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.weekdays{border-bottom:1px solid var(--line)}
+.weekdays div{padding:10px 12px;font-size:.85rem;font-weight:600;color:var(--muted)}
+.cell{min-height:122px;min-width:0;padding:6px 7px 9px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:5px;cursor:pointer;position:relative}
+.cell:nth-child(7n){border-right:0}
+.cell.out{background:var(--out)}
+.cell.out .num{color:var(--muted2)}
+.cell.sel{box-shadow:inset 0 0 0 2px var(--accent)}
+.cell:focus-visible{outline:none;box-shadow:inset 0 0 0 3px var(--accent)}
+.cell-head{display:flex;justify-content:space-between;align-items:center}
+.num{display:inline-grid;place-items:center;width:1.95em;height:1.95em;border-radius:50%;font-weight:600;font-size:.95rem}
+.cell.today .num{background:var(--accent);color:var(--accent-ink)}
+.donecount{font-size:.75rem;font-weight:600;color:var(--muted)}
+.mini{position:relative;font-family:var(--hand);font-size:.86rem;line-height:1.2;background:var(--c);color:var(--nk);padding:3px 22px 3px 7px;border-radius:2px;transform:rotate(var(--r));box-shadow:0 1px 2px rgba(0,0,0,.14);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mini .peel{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:19px;height:19px;border:0;border-radius:4px;background:transparent;cursor:pointer;font-size:.78rem;opacity:0;padding:0;color:inherit}
+.mini:hover .peel,.mini .peel:focus-visible{opacity:1;background:rgba(255,255,255,.45)}
+@media (hover:none){.mini .peel{opacity:.75}}
+.more{font-size:.76rem;color:var(--muted);padding-left:3px}
+
+.day{position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px);max-height:calc(100dvh - 32px);overflow:auto;padding:4px 10px 24px 4px}
+.day-head .rel{margin:0;font-size:.9rem;color:var(--muted);font-weight:600}
+.day-head h2{margin:0 0 14px;font-size:1.7rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.quick{display:flex;gap:6px;margin-bottom:6px}
+.quick input{flex:1;min-width:0;font:inherit;padding:.55em .8em;border:1.5px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink)}
+.linkbtn{background:none;border:0;padding:0;color:var(--accent);font-weight:600;cursor:pointer;font-size:.88rem}
+.stack{display:flex;flex-direction:column;gap:22px;margin:26px 0 18px}
+.note{position:relative;background:var(--c);color:var(--nk);padding:18px 16px 13px;border-radius:2px 2px 16px 2px;transform:rotate(var(--r));box-shadow:0 2px 3px rgba(0,0,0,.08),0 12px 20px -12px rgba(0,0,0,.4)}
+.note::before{content:"";position:absolute;top:-10px;left:50%;width:72px;height:20px;transform:translateX(-50%) rotate(-3deg);background:rgba(255,255,255,.5);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.note h3{margin:0 0 3px;font-family:var(--hand);font-weight:700;font-size:1.38rem;line-height:1.15;overflow-wrap:anywhere}
+.note .desc{margin:0 0 6px;font-family:var(--hand);white-space:pre-wrap;overflow-wrap:anywhere}
+.note .freq{margin:0 0 11px;font-size:.8rem;opacity:.78}
+.note-actions{display:flex;flex-wrap:wrap;gap:6px}
+.note-actions button{font-size:.82rem;font-weight:600;background:var(--bb);border:1px solid rgba(0,0,0,.14);border-radius:8px;padding:.35em .75em;cursor:pointer}
+.note-actions button:hover{border-color:rgba(0,0,0,.35)}
+.peel-off{animation:peel .32s ease-in forwards}
+@keyframes peel{to{transform:translate(46px,-34px) rotate(14deg);opacity:0}}
+.empty{color:var(--muted);margin:22px 0}
+details{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;font-weight:600;color:var(--muted)}
+.gone{display:flex;align-items:center;gap:10px;margin:10px 0;padding:8px 10px;border-radius:8px;background:var(--paper)}
+.gone .sw{flex:none}
+.gone span{flex:1;min-width:0;font-family:var(--hand);text-decoration:line-through;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gone.removed span{text-decoration:none;font-style:italic}
+
+dialog{border:0;border-radius:18px;padding:0;width:min(520px,calc(100vw - 24px));background:var(--paper);color:var(--ink);box-shadow:0 30px 60px -20px rgba(0,0,0,.5)}
+dialog::backdrop{background:rgba(18,26,34,.5)}
+dialog form{padding:22px 22px 18px}
+dialog h2{margin:0 0 16px;font-size:1.45rem;font-weight:800;letter-spacing:-.02em}
+.field{display:block;margin-bottom:14px;font-weight:600;font-size:.9rem}
+.field input,.field select,.field textarea{display:block;width:100%;margin-top:5px;font:inherit;font-weight:400;padding:.55em .7em;border:1.5px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink)}
+.field textarea{resize:vertical}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+fieldset{border:0;padding:0;margin:0 0 14px}
+legend{font-weight:600;font-size:.9rem;padding:0;margin-bottom:6px}
+.wd{display:flex;flex-wrap:wrap;gap:6px}
+.wd label{cursor:pointer}
+.wd input{position:absolute;opacity:0;pointer-events:none}
+.wd span{display:inline-block;padding:.35em .7em;border:1.5px solid var(--line);border-radius:999px;font-size:.85rem;font-weight:600}
+.wd input:checked+span{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.wd input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.swatch{width:34px;height:34px;border-radius:4px;border:0;background:var(--c);cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15);position:relative}
+.swatch[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:2px}
+.swatch.auto{width:auto;padding:0 10px;font-size:.8rem;font-weight:600;color:#1E2833}
+.swatch.custom{display:inline-grid;place-items:center;width:auto;padding:0 10px;font-size:.8rem;font-weight:600;background:var(--paper);box-shadow:inset 0 0 0 1.5px var(--line)}
+.swatch.custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.hint{margin:-6px 0 16px;color:var(--muted);font-size:.9rem}
+.crow{display:flex;align-items:center;gap:12px;margin-bottom:10px;font-weight:600}
+.crow input{width:46px;height:34px;padding:0;border:1.5px solid var(--line);border-radius:8px;background:none;cursor:pointer}
+.dlg-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:20px}
+.spacer{flex:1}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);opacity:0;pointer-events:none;background:var(--ink);color:var(--paper);padding:10px 12px 10px 16px;border-radius:12px;display:flex;gap:12px;align-items:center;max-width:calc(100vw - 32px);transition:opacity .2s,transform .2s;z-index:20;font-size:.92rem}
+.toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast button{background:none;border:1.5px solid currentColor;border-radius:8px;padding:.25em .7em;cursor:pointer;font-weight:600;color:inherit}
+
+@media (prefers-reduced-motion: reduce){.peel-off{animation:none;opacity:0}.toast{transition:none}}
+@media (max-width:960px){.layout{grid-template-columns:1fr}.day{position:static;max-height:none;overflow:visible;padding:4px 4px 24px}}
+@media (max-width:640px){
+  .top,.layout{padding-left:12px;padding-right:12px}
+  .weekdays div{padding:8px 2px;text-align:center;font-size:.75rem}
+  .cell{min-height:66px;padding:4px 4px 6px;gap:3px}
+  .num{font-size:.85rem}
+  .mini{font-size:0;height:7px;padding:0;border-radius:3px;transform:none}
+  .mini .peel{display:none}
+  .more{font-size:.66rem;padding:0}
+  .donecount{font-size:.66rem}
+  .row2{grid-template-columns:1fr}
+  .saved{margin-left:0;width:100%}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="title-row">
+    <h1 id="monthTitle">Calendar</h1>
+    <nav class="month-nav" aria-label="Change month">
+      <button class="btn icon" id="prevBtn" aria-label="Previous month">‹</button>
+      <button class="btn" id="todayBtn">Today</button>
+      <button class="btn icon" id="nextBtn" aria-label="Next month">›</button>
+    </nav>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="newBtn">New task</button>
+    <button class="btn" id="exportBtn">Export to Excel</button>
+    <button class="btn" id="settingsBtn">Colors and settings</button>
+    <button class="btn" id="backupBtn">Download backup</button>
+    <button class="btn" id="restoreBtn">Restore backup</button>
+    <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+  </div>
+  <div class="meta-row" id="metaRow"></div>
+</header>
+
+<main class="layout">
+  <section class="board" aria-label="Month calendar">
+    <div class="weekdays" id="weekdays"></div>
+    <div class="grid" id="grid"></div>
+  </section>
+  <aside class="day" id="dayPanel" aria-live="polite"></aside>
+</main>
+
+<dialog id="taskDlg">
+  <form id="taskForm" novalidate>
+    <h2 id="taskDlgTitle">New task</h2>
+    <label class="field">Task<input id="fTitle" maxlength="140" autocomplete="off" placeholder="Water the plants"></label>
+    <label class="field">Notes (optional)<textarea id="fNotes" rows="2"></textarea></label>
+    <div class="row2">
+      <label class="field">Repeats
+        <select id="fFreq">
+          <option value="once">One-time</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </label>
+      <label class="field">Starts<input type="date" id="fStart"></label>
+    </div>
+    <fieldset id="fWeekWrap"><legend>On these days</legend><div class="wd" id="fWeekdays"></div></fieldset>
+    <label class="field" id="fUntilWrap">Ends (optional)<input type="date" id="fUntil"></label>
+    <fieldset><legend>Note color</legend><div class="swatches" id="fColors"></div></fieldset>
+    <div class="dlg-actions">
+      <button type="button" class="btn danger" id="fDelete">Delete task</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="fCancel">Cancel</button>
+      <button type="submit" class="btn primary">Save task</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settingsDlg">
+  <form id="settingsForm">
+    <h2>Colors and settings</h2>
+    <p class="hint">Each repeat type gets its own note color. Any single task can still pick its own color.</p>
+    <div id="sColors"></div>
+    <label class="field">Week starts on
+      <select id="sWeek"><option value="1">Monday</option><option value="0">Sunday</option></select>
+    </label>
+    <div class="dlg-actions">
+      <button type="button" class="btn danger" id="sErase">Erase all data</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="sCancel">Cancel</button>
+      <button type="submit" class="btn primary">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+'use strict';
+const KEY = 'sticky-calendar-v1';
+const FREQ = {once:'One-time', daily:'Daily', weekly:'Weekly', monthly:'Monthly'};
+const PALETTE = ['#FFE27A','#FFC58A','#F7B6CF','#D4C2F5','#9FD8F5','#B8E6A5','#E4E4DA','#FF9B8A'];
+const DSHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DLONG = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = s => document.querySelector(s);
+
+/* ---------- dates ---------- */
+const pad = n => String(n).padStart(2,'0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parse = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const todayStr = () => ymd(new Date());
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate()+n); return ymd(d); };
+const longDate = s => { const d = parse(s); return `${DLONG[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
+const shortDate = s => { const d = parse(s); return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}`; };
+const relLabel = s => { const t = todayStr(); if (s===t) return 'Today'; if (s===addDays(t,1)) return 'Tomorrow'; if (s===addDays(t,-1)) return 'Yesterday'; return DLONG[parse(s).getDay()]; };
+
+/* ---------- state + memory ---------- */
+let storageOk = true;
+function defaults(){
+  return { version:1, settings:{ weekStart:1, colors:{ once:'#FFE27A', daily:'#9FD8F5', weekly:'#B8E6A5', monthly:'#F7B6CF' } }, tasks:[], status:{}, log:[] };
+}
+function normalize(p){
+  const d = defaults();
+  const s = p.settings || {};
+  return {
+    version:1,
+    settings:{ weekStart: s.weekStart===0 ? 0 : 1, colors:{...d.settings.colors, ...(s.colors||{})} },
+    tasks: Array.isArray(p.tasks) ? p.tasks : [],
+    status: (p.status && typeof p.status==='object') ? p.status : {},
+    log: Array.isArray(p.log) ? p.log : []
+  };
+}
+function load(){
+  try { const raw = localStorage.getItem(KEY); if (raw) return normalize(JSON.parse(raw)); }
+  catch(e){ storageOk = false; }
+  return defaults();
+}
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(S)); storageOk = true; }
+  catch(e){ storageOk = false; toast('Changes are not being saved: this browser is blocking storage or is full.'); }
+}
+function log(action, t, day, detail){
+  S.log.push({ at:new Date().toISOString(), action, taskId:t?t.id:'', title:t?t.title:'', day:day||'', detail:detail||'' });
+  if (S.log.length > 5000) S.log.splice(0, S.log.length-5000);
+}
+let S = load();
+const now0 = new Date();
+let view = { y:now0.getFullYear(), m:now0.getMonth() };
+let selected = todayStr();
+
+/* ---------- helpers ---------- */
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sKey = (id, ds) => `${id}|${ds}`;
+function rot(id){ let h = 0; for (const c of id) h = (h*31 + c.charCodeAt(0)) | 0; return ((Math.abs(h)%50)/10 - 2.5).toFixed(1); }
+const colorOf = t => t.color || S.settings.colors[t.freq] || '#FFE27A';
+function isDark(hex){
+  const n = parseInt((hex||'#fff').slice(1), 16); if (isNaN(n)) return false;
+  const r = (n>>16)&255, g = (n>>8)&255, b = n&255;
+  return (0.299*r + 0.587*g + 0.114*b)/255 < 0.55;
+}
+function noteVars(t){
+  const c = colorOf(t), dark = isDark(c);
+  return `--c:${c};--nk:${dark?'#FFFFFF':'#1E2833'};--bb:${dark?'rgba(255,255,255,.18)':'rgba(255,255,255,.55)'};--r:${rot(t.id)}deg`;
+}
+function weekdaysOf(t){ return (t.weekdays && t.weekdays.length) ? t.weekdays : [parse(t.start).getDay()]; }
+function occursOn(t, ds){
+  if (ds < t.start) return false;
+  if (t.until && ds > t.until) return false;
+  switch (t.freq){
+    case 'once': return ds === t.start;
+    case 'daily': return true;
+    case 'weekly': return weekdaysOf(t).includes(parse(ds).getDay());
+    case 'monthly': {
+      const d = parse(ds), sd = parse(t.start).getDate();
+      const last = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+      return d.getDate() === Math.min(sd, last);
+    }
+  }
+  return false;
+}
+function itemsOn(ds){ return S.tasks.filter(t => occursOn(t, ds)).map(t => ({ t, st:S.status[sKey(t.id, ds)] })); }
+function freqText(t){
+  let s;
+  if (t.freq==='once') s = `One-time on ${shortDate(t.start)}`;
+  else if (t.freq==='daily') s = 'Every day';
+  else if (t.freq==='weekly') s = 'Every ' + orderedDays().filter(d => weekdaysOf(t).includes(d)).map(d => DSHORT[d]).join(', ');
+  else s = `Monthly on day ${parse(t.start).getDate()}`;
+  if (t.freq!=='once' && t.until) s += ` until ${shortDate(t.until)}`;
+  return s;
+}
+const orderedDays = () => { const w = S.settings.weekStart; return [0,1,2,3,4,5,6].map(i => (i+w)%7); };
+
+/* ---------- toast ---------- */
+let toastTimer;
+function toast(msg, undo){
+  const el = $('#toast');
+  el.innerHTML = `<span>${esc(msg)}</span>` + (undo ? '<button type="button">Undo</button>' : '');
+  if (undo) el.querySelector('button').onclick = () => { undo(); hideToast(); };
+  el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 5500);
+}
+function hideToast(){ $('#toast').classList.remove('show'); }
+
+/* ---------- render ---------- */
+function render(){ renderHeader(); renderGrid(); renderPanel(); }
+
+function renderHeader(){
+  $('#monthTitle').innerHTML = `${MONTHS[view.m]} <span class="y">${view.y}</span>`;
+  const chips = Object.keys(FREQ).map(f => `<button class="chip" data-open-settings style="--c:${S.settings.colors[f]}"><span class="sw"></span>${FREQ[f]}</button>`).join('');
+  $('#metaRow').innerHTML = chips + `<span class="saved">${storageOk ? 'Saved automatically in this browser' : 'Not saving: browser storage is blocked'}</span>`;
+}
+
+function renderGrid(){
+  $('#weekdays').innerHTML = orderedDays().map(d => `<div>${DSHORT[d]}</div>`).join('');
+  const first = new Date(view.y, view.m, 1);
+  const offset = (first.getDay() - S.settings.weekStart + 7) % 7;
+  const dim = new Date(view.y, view.m+1, 0).getDate();
+  const total = Math.ceil((offset + dim) / 7) * 7;
+  const today = todayStr();
+  const d = new Date(view.y, view.m, 1 - offset);
+  let html = '';
+  for (let i = 0; i < total; i++){
+    const ds = ymd(d);
+    const items = itemsOn(ds);
+    const pending = items.filter(x => !x.st);
+    const done = items.filter(x => x.st && x.st.state==='done').length;
+    const cls = ['cell', d.getMonth()!==view.m && 'out', ds===today && 'today', ds===selected && 'sel'].filter(Boolean).join(' ');
+    const max = 3;
+    html += `<div class="${cls}" role="button" tabindex="${ds===selected?0:-1}" data-date="${ds}" aria-pressed="${ds===selected}" aria-label="${esc(longDate(ds))}, ${pending.length} open, ${done} done">
+      <div class="cell-head"><span class="num">${d.getDate()}</span>${done ? `<span class="donecount" title="${done} done">✓ ${done}</span>` : ''}</div>
+      ${pending.slice(0,max).map(({t}) => `<div class="mini" style="${noteVars(t)}" title="${esc(t.title)}">${esc(t.title)}<button class="peel" data-peel="${t.id}" aria-label="Mark ${esc(t.title)} done">✓</button></div>`).join('')}
+      ${pending.length>max ? `<span class="more">+${pending.length-max} more</span>` : ''}
+    </div>`;
+    d.setDate(d.getDate()+1);
+  }
+  $('#grid').innerHTML = html;
+}
+
+function noteCard(t){
+  return `<article class="note" style="${noteVars(t)}" data-id="${t.id}">
+    <h3>${esc(t.title)}</h3>
+    ${t.notes ? `<p class="desc">${esc(t.notes)}</p>` : ''}
+    <p class="freq">${esc(freqText(t))}</p>
+    <div class="note-actions">
+      <button type="button" data-act="done">Done</button>
+      <button type="button" data-act="remove">Remove for this day</button>
+      <button type="button" data-act="edit">Edit</button>
+    </div>
+  </article>`;
+}
+function renderPanel(){
+  const items = itemsOn(selected);
+  const pending = items.filter(x => !x.st);
+  const done = items.filter(x => x.st && x.st.state==='done');
+  const removed = items.filter(x => x.st && x.st.state==='removed');
+  const d = parse(selected);
+  const gone = (arr, kind) => arr.map(({t}) => `<div class="gone ${kind}" data-id="${t.id}"><span class="sw" style="--c:${colorOf(t)}"></span><span>${esc(t.title)}</span><button class="btn" type="button" data-act="restore">${kind==='done'?'Undo':'Put back'}</button></div>`).join('');
+  $('#dayPanel').innerHTML = `
+    <div class="day-head"><p class="rel">${relLabel(selected)}</p><h2>${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}</h2></div>
+    <form class="quick" id="quickForm">
+      <input id="quickInput" maxlength="140" autocomplete="off" placeholder="Stick a note on this day" aria-label="New one-time note for this day">
+      <button class="btn primary" type="submit">Add</button>
+    </form>
+    <button type="button" class="linkbtn" id="quickMore">Make it repeat or pick a color</button>
+    ${pending.length ? `<div class="stack">${pending.map(x => noteCard(x.t)).join('')}</div>`
+      : `<p class="empty">${items.length ? 'All clear for this day.' : 'Nothing stuck here yet. Type a note above, or create a daily or weekly task.'}</p>`}
+    ${done.length ? `<details open><summary>Done (${done.length})</summary>${gone(done,'done')}</details>` : ''}
+    ${removed.length ? `<details><summary>Removed for this day (${removed.length})</summary>${gone(removed,'removed')}</details>` : ''}
+  `;
+}
+
+/* ---------- actions ---------- */
+function select(ds, focus){
+  selected = ds;
+  const d = parse(ds);
+  view = { y:d.getFullYear(), m:d.getMonth() };
+  render();
+  if (focus){ const c = document.querySelector(`.cell[data-date="${ds}"]`); if (c) c.focus(); }
+}
+function findTask(id){ return S.tasks.find(t => t.id===id); }
+
+function setStatus(t, ds, state, opts = {}){
+  const k = sKey(t.id, ds);
+  const prev = S.status[k] ? S.status[k].state : null;
+  if (state) S.status[k] = { state, at:new Date().toISOString() }; else delete S.status[k];
+  const action = state==='done' ? 'Marked done' : state==='removed' ? 'Removed for day' : (prev==='done' ? 'Undid done' : 'Put back');
+  log(action, t, ds);
+  save();
+  if (opts.el && !reduceMotion){ opts.el.classList.add('peel-off'); setTimeout(render, 320); } else render();
+  if (!opts.quiet && state) toast(`${state==='done'?'Done':'Removed for this day'}: ${t.title}`, () => setStatus(t, ds, prev, {quiet:true}));
+}
+
+/* grid events */
+$('#grid').addEventListener('click', e => {
+  const peel = e.target.closest('[data-peel]');
+  const cell = e.target.closest('.cell');
+  if (!cell) return;
+  if (peel){ e.stopPropagation(); const t = findTask(peel.dataset.peel); if (t) setStatus(t, cell.dataset.date, 'done', {el:peel.closest('.mini')}); return; }
+  select(cell.dataset.date);
+});
+$('#grid').addEventListener('keydown', e => {
+  const cell = e.target.closest('.cell'); if (!cell || e.target !== cell) return;
+  const moves = {ArrowLeft:-1, ArrowRight:1, ArrowUp:-7, ArrowDown:7};
+  if (e.key==='Enter' || e.key===' '){ e.preventDefault(); select(cell.dataset.date, true); }
+  else if (moves[e.key]){ e.preventDefault(); select(addDays(cell.dataset.date, moves[e.key]), true); }
+});
+
+/* panel events */
+$('#dayPanel').addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if (e.target.id==='quickMore'){ openTaskDialog(null, selected, $('#quickInput').value.trim()); return; }
+  if (!btn) return;
+  const host = btn.closest('[data-id]'); const t = host && findTask(host.dataset.id); if (!t) return;
+  const act = btn.dataset.act;
+  if (act==='done') setStatus(t, selected, 'done', {el:host});
+  else if (act==='remove') setStatus(t, selected, 'removed', {el:host});
+  else if (act==='restore') setStatus(t, selected, null);
+  else if (act==='edit') openTaskDialog(t);
+});
+$('#dayPanel').addEventListener('submit', e => {
+  if (e.target.id!=='quickForm') return;
+  e.preventDefault();
+  const title = $('#quickInput').value.trim();
+  if (!title){ $('#quickInput').focus(); return; }
+  const stamp = new Date().toISOString();
+  const t = { id:uid(), title, notes:'', freq:'once', start:selected, until:'', weekdays:[], color:null, createdAt:stamp, updatedAt:stamp };
+  S.tasks.push(t); log('Created', t, selected, freqText(t)); save(); render();
+  $('#quickInput').focus();
+});
+
+/* header */
+$('#prevBtn').onclick = () => { view.m--; if (view.m<0){ view.m=11; view.y--; } render(); };
+$('#nextBtn').onclick = () => { view.m++; if (view.m>11){ view.m=0; view.y++; } render(); };
+$('#todayBtn').onclick = () => select(todayStr(), true);
+$('#newBtn').onclick = () => openTaskDialog(null, selected);
+$('#settingsBtn').onclick = openSettings;
+$('#metaRow').addEventListener('click', e => { if (e.target.closest('[data-open-settings]')) openSettings(); });
+
+/* ---------- task dialog ---------- */
+let editing = null, dlgColor = null;
+function paintSwatches(){
+  const autoC = S.settings.colors[$('#fFreq').value];
+  const customActive = dlgColor && !PALETTE.includes(dlgColor);
+  $('#fColors').innerHTML =
+    `<button type="button" class="swatch auto" data-c="" style="--c:${autoC}" aria-pressed="${!dlgColor}">Repeat color</button>` +
+    PALETTE.map(c => `<button type="button" class="swatch" data-c="${c}" style="--c:${c}" aria-label="Color ${c}" aria-pressed="${dlgColor===c}"></button>`).join('') +
+    `<label class="swatch custom" aria-pressed="${!!customActive}" ${customActive?`style="background:${dlgColor};color:${isDark(dlgColor)?'#fff':'#1E2833'}"`:''}>Custom<input type="color" id="fCustom" value="${customActive?dlgColor:'#FFD166'}" aria-label="Custom color"></label>`;
+}
+$('#fColors').addEventListener('click', e => { const b = e.target.closest('button.swatch'); if (!b) return; dlgColor = b.dataset.c || null; paintSwatches(); });
+$('#fColors').addEventListener('input', e => { if (e.target.id==='fCustom'){ dlgColor = e.target.value.toUpperCase(); paintSwatches(); } });
+function syncFreqFields(){
+  const f = $('#fFreq').value;
+  $('#fWeekWrap').hidden = f!=='weekly';
+  $('#fUntilWrap').hidden = f==='once';
+  paintSwatches();
+}
+$('#fFreq').addEventListener('change', () => {
+  if ($('#fFreq').value==='weekly' && !$('#fWeekdays input:checked') && $('#fStart').value){
+    const box = $(`#fWeekdays input[value="${parse($('#fStart').value).getDay()}"]`); if (box) box.checked = true;
+  }
+  syncFreqFields();
+});
+function openTaskDialog(t, day, prefill){
+  editing = t || null;
+  dlgColor = t ? (t.color || null) : null;
+  $('#taskDlgTitle').textContent = t ? 'Edit task' : 'New task';
+  $('#fTitle').value = t ? t.title : (prefill || '');
+  $('#fNotes').value = t ? (t.notes || '') : '';
+  $('#fFreq').value = t ? t.freq : 'once';
+  $('#fStart').value = t ? t.start : (day || todayStr());
+  $('#fUntil').value = t ? (t.until || '') : '';
+  const wd = t && t.freq==='weekly' ? weekdaysOf(t) : [parse($('#fStart').value).getDay()];
+  $('#fWeekdays').innerHTML = orderedDays().map(d => `<label><input type="checkbox" value="${d}" ${wd.includes(d)?'checked':''}><span>${DSHORT[d]}</span></label>`).join('');
+  $('#fDelete').hidden = !t;
+  syncFreqFields();
+  $('#taskDlg').showModal();
+  $('#fTitle').focus();
+}
+$('#fCancel').onclick = () => $('#taskDlg').close();
+$('#taskForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const title = $('#fTitle').value.trim();
+  const freq = $('#fFreq').value;
+  const start = $('#fStart').value;
+  let until = freq==='once' ? '' : $('#fUntil').value;
+  if (!title){ toast('Give the task a name.'); $('#fTitle').focus(); return; }
+  if (!start){ toast('Pick a start date.'); $('#fStart').focus(); return; }
+  if (until && until < start){ toast('The end date must be on or after the start date.'); $('#fUntil').focus(); return; }
+  let weekdays = freq==='weekly' ? [...document.querySelectorAll('#fWeekdays input:checked')].map(i => +i.value) : [];
+  if (freq==='weekly' && !weekdays.length) weekdays = [parse(start).getDay()];
+  const data = { title, notes:$('#fNotes').value.trim(), freq, start, until, weekdays, color:dlgColor };
+  const stamp = new Date().toISOString();
+  if (editing){
+    const before = { ...editing, text:freqText(editing), colorShown:colorOf(editing) };
+    Object.assign(editing, data, { updatedAt:stamp });
+    const changes = [];
+    if (before.title !== title) changes.push(`title "${before.title}" to "${title}"`);
+    if ((before.notes||'') !== data.notes) changes.push('notes changed');
+    if (before.text !== freqText(editing)) changes.push(`schedule "${before.text}" to "${freqText(editing)}"`);
+    if (before.colorShown !== colorOf(editing)) changes.push(`color ${before.colorShown} to ${colorOf(editing)}`);
+    log('Edited', editing, '', changes.join('; ') || 'no changes');
+  } else {
+    const t = { id:uid(), ...data, createdAt:stamp, updatedAt:stamp };
+    S.tasks.push(t); log('Created', t, start, freqText(t));
+  }
+  save();
+  $('#taskDlg').close();
+  if (!editing) select(start); else render();
+});
+$('#fDelete').onclick = () => {
+  const t = editing; if (!t) return;
+  if (!confirm(`Delete "${t.title}" from every day? It stays in the change log of your Excel export.`)) return;
+  S.tasks = S.tasks.filter(x => x.id !== t.id);
+  for (const k of Object.keys(S.status)) if (k.startsWith(t.id + '|')) delete S.status[k];
+  log('Deleted', t, '', freqText(t));
+  save(); $('#taskDlg').close(); render();
+  toast(`Deleted: ${t.title}`);
+};
+
+/* ---------- settings ---------- */
+function openSettings(){
+  $('#sColors').innerHTML = Object.keys(FREQ).map(f => `<label class="crow"><input type="color" data-freq="${f}" value="${S.settings.colors[f]}">${FREQ[f]}</label>`).join('');
+  $('#sWeek').value = String(S.settings.weekStart);
+  $('#settingsDlg').showModal();
+}
+$('#sCancel').onclick = () => $('#settingsDlg').close();
+$('#settingsForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const changes = [];
+  document.querySelectorAll('#sColors input').forEach(i => {
+    const f = i.dataset.freq, v = i.value.toUpperCase();
+    if (S.settings.colors[f].toUpperCase() !== v){ changes.push(`${FREQ[f]} color to ${v}`); S.settings.colors[f] = v; }
+  });
+  const w = +$('#sWeek').value;
+  if (w !== S.settings.weekStart){ changes.push(`week starts on ${w ? 'Monday' : 'Sunday'}`); S.settings.weekStart = w; }
+  if (changes.length) log('Settings changed', null, '', changes.join('; '));
+  save(); $('#settingsDlg').close(); render();
+});
+$('#sErase').onclick = () => {
+  if (!confirm('Erase every task, note and the change log from this browser? Download a backup first if you might need it.')) return;
+  S = defaults(); save(); $('#settingsDlg').close(); render(); toast('All data erased.');
+};
+
+/* ---------- backup ---------- */
+function download(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+}
+$('#backupBtn').onclick = () => {
+  download(new Blob([JSON.stringify(S, null, 2)], {type:'application/json'}), `sticky-calendar-backup_${todayStr()}.json`);
+  toast('Backup downloaded.');
+};
+$('#restoreBtn').onclick = () => $('#restoreFile').click();
+$('#restoreFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!data || !Array.isArray(data.tasks)) throw new Error('bad');
+    if (!confirm(`Replace what's in this browser with the backup "${file.name}"?`)) return;
+    S = normalize(data); log('Restored backup', null, '', file.name); save(); render();
+    toast('Backup restored.');
+  } catch(err){ toast('That file is not a Sticky Calendar backup. Choose a .json file made with "Download backup".'); }
+});
+
+/* ---------- Excel export ---------- */
+$('#exportBtn').onclick = () => {
+  if (!window.XLSX){ toast('Excel export needs an internet connection to load. Reconnect and try again.'); return; }
+  const today = todayStr();
+  const occ = [];
+  for (const t of S.tasks){
+    const end = (t.until && t.until < today) ? t.until : today;
+    if (t.start > end) continue;
+    const d = parse(t.start), endD = parse(end);
+    while (d <= endD){
+      const ds = ymd(d);
+      if (occursOn(t, ds)) occ.push({ t, ds, st:S.status[sKey(t.id, ds)] });
+      d.setDate(d.getDate()+1);
+    }
+  }
+  occ.sort((a,b) => a.ds < b.ds ? -1 : a.ds > b.ds ? 1 : a.t.title.localeCompare(b.t.title));
+  const label = o => o.st ? (o.st.state==='done' ? 'Done' : 'Removed') : (o.ds < today ? 'Missed' : 'Open');
+  const fmt = iso => iso ? new Date(iso).toLocaleString() : '';
+
+  // per-task summary
+  const per = new Map();
+  for (const o of occ){
+    const r = per.get(o.t.id) || { t:o.t, total:0, Done:0, Removed:0, Missed:0, Open:0 };
+    r.total++; r[label(o)]++; per.set(o.t.id, r);
+  }
+  const tot = { total:occ.length, Done:0, Removed:0, Missed:0, Open:0 };
+  occ.forEach(o => tot[label(o)]++);
+  const rate = (done, total, removed) => { const base = total - removed; return base > 0 ? Math.round(done/base*1000)/10 + '%' : ''; };
+
+  const summary = [
+    ['Sticky Calendar export'],
+    ['As of', today],
+    ['Exported at', new Date().toLocaleString()],
+    [],
+    ['Occurrences up to today', tot.total],
+    ['Done', tot.Done],
+    ['Removed for the day', tot.Removed],
+    ['Missed', tot.Missed],
+    ['Still open today', tot.Open],
+    ['Completion rate (excluding removed)', rate(tot.Done, tot.total, tot.Removed)],
+    [],
+    ['Task','Repeats','Schedule','Occurrences','Done','Removed','Missed','Open today','Completion rate']
+  ];
+  for (const r of per.values()) summary.push([r.t.title, FREQ[r.t.freq], freqText(r.t), r.total, r.Done, r.Removed, r.Missed, r.Open, rate(r.Done, r.total, r.Removed)]);
+
+  const occRows = [['Date','Weekday','Task','Repeats','Color','Status','Status changed at']];
+  occ.forEach(o => occRows.push([o.ds, DLONG[parse(o.ds).getDay()], o.t.title, FREQ[o.t.freq], colorOf(o.t), label(o), o.st ? fmt(o.st.at) : '']));
+
+  const taskRows = [['Task','Notes','Repeats','Schedule','Starts','Ends','Color','Created','Last edited']];
+  S.tasks.forEach(t => taskRows.push([t.title, t.notes||'', FREQ[t.freq], freqText(t), t.start, t.until||'', colorOf(t), fmt(t.createdAt), fmt(t.updatedAt)]));
+
+  const logRows = [['When','Action','Task','For day','Details']];
+  [...S.log].reverse().forEach(l => logRows.push([fmt(l.at), l.action, l.title, l.day, l.detail]));
+
+  const wb = XLSX.utils.book_new();
+  const add = (rows, name, widths) => { const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = widths.map(w => ({wch:w})); XLSX.utils.book_append_sheet(wb, ws, name); };
+  add(summary, 'Summary', [34,12,30,12,8,10,8,11,15]);
+  add(occRows, 'Day by day', [12,11,32,11,10,10,22]);
+  add(taskRows, 'Tasks', [32,32,11,30,12,12,10,22,22]);
+  add(logRows, 'Change log', [22,16,32,12,50]);
+  XLSX.writeFile(wb, `sticky-calendar_${today}.xlsx`);
+  log('Exported to Excel', null, today, `${occ.length} occurrences`);
+  save();
+  toast('Excel file downloaded.');
+};
+
+render();
+})();
+</script>
+</body>
+</html>
